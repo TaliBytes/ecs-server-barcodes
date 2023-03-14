@@ -1,0 +1,111 @@
+@share()
+@RESPONSE_CONTENTTYPE(image/svg+xml)
+
+<ec:var connection = "" rem="would be name of connection in settings.xml file"/>
+
+<ec:function server_barcode>
+  <ec:param value symbology="c128c" style pstyle class/>
+  <ec:set symbology=@symbology.lower()/>
+  <ec:set value="0@value()" if=@all(@value.length.is(12)|@symbology.is(upc)) rem="upc IS a subset of EAN13 and therefore should be converted to it"/>
+  <ec:set symbology="ean13" if=@all(@symbology.is(upc)|@value.length.is(13))/>
+
+
+  <ec:case if=@symbology.is(c128|c128a|c128b|c128c)>
+    <ec:set value="0@value()" if=@value.length.isodd/>
+
+    <ec:var startCode stopCode="2331112"/>
+    <ec:set startCode="211412" if=@symbology.is(c128a)/>
+    <ec:set startCode="211214" if=@symbology.is(c128b)/>
+    <ec:set startCode="211232" if=@symbology.is(c128|c128c)/>
+    
+    <ec:data xx connection=@connection>
+      EXEC dbo.ec_c128_outputWidths "@symbology", '@value', NULL
+      WITH RESULT SETS ((
+        [widths] varchar(240)
+      ))   
+    </ec:data>
+    <ec:var widths = @xx[1/widths]/>
+  
+    <ec:data xy connection=@connection>
+      EXEC dbo.ec_c128_checkSum "@symbology", @widths
+      WITH RESULT SETS ((
+        [checkSum] varchar(240)
+      ))      
+    </ec:data>
+    <ec:var checkSum = @xy[1/checkSum]/>
+    <ec:var completeCode = '@startCode()@widths()@checkSum()@stopCode()'/>
+    <ec:var totalWidth/>
+    <ec:loop count=@completeCode.length>
+      <ec:set totalWidth = @calc(@totalWidth.alt(0) + @completeCode.right(@index).left(1))/>
+    </ec:loop>
+    
+    <style>
+      :root {
+        /* the height of the barcode is defined here */
+        --code-height: 23px;
+      }
+    
+      /* no margins and collapsed body to only return only barcode */
+      * {margin:0; padding:0;}
+      body {height:var(--code-height);}
+
+      /* barcode positioned in the top left. height set by referencing --code-height var  */
+      svg.barcodeSVG {display:block; height:var(--code-height);}
+      svg.barcodeSVG rect {height:var(--code-height);}       
+    </style>
+  
+    <svg class="barcodeSVG @class" @style.with(style="|")>
+    <ec:var previousWidth/>    
+    <ec:loop count=@completeCode.length>
+    <ec:set previousWidth = @calc(@previousWidth.alt(0) - @completeCode.right(@calc(@index - 1)).left(1)).asinteger.alt(0) if=@index.isgreaterthan(1)/>
+    <ec:set previousWidth = @totalWidth if=@index.is(1)/>
+    
+    <rect width="@previousWidth.asinteger.alt(0)" @if(@index.isodd|style="fill:rgb(0,0,0);")@if(@index.iseven|style="fill:rgb(255,255,255);")/>
+    </ec:loop>
+    Please upgrade to a browser that supports svg images in order to view this barcode.
+    </svg>
+  </ec:case>
+
+
+  <ec:case if=@symbology.is(ean13|ean-13|upc|upca)>
+    <ec:var startCode="111" midgard='11111' stopCode="111" rem="midgard is var for the middle guard. I had to make the pun --scott"/>
+
+    <ec:data xx connection=@connection>
+      EXEC ec_ean13_outputWidths '@value', NULL
+      WITH RESULT SETS ((
+        [widths] VARCHAR(48)
+      ))
+    </ec:data>
+    <ec:var widths=@xx[1/widths]/>
+
+    <ec:data xy connection=@connection rem="CHECK SUM GOES HERE"> 
+      EXEC ec_ean13_checkSum '@widths'
+      WITH RESULT SETS ((
+        [checkSumWidths] VARCHAR(4)
+      ))
+    </ec:data>
+    <ec:var checksum=@xy[1/checkSum]/>
+
+    <ec:var completeCode="@startCode()@widths.left(24)@midgard()@widths.right(24)@stopCode()"/>
+    <ec:var leftValue="@value.left(6)" rightValue="@value.right(6)"/>
+    
+    <ec:var totalWidth/>
+    <ec:loop count=@completeCode.length>
+      <ec:set totalWidth = @calc(@totalWidth.alt(0) + @completeCode.right(@index).left(1))/>
+    </ec:loop>
+
+    <ec:var codeHeight = '37px'/>
+    
+    <p style="display:inline; position:relative; font-size:13px; width:max-content; margin:0; @pstyle()">@leftValue.left(1)&nbsp;&nbsp;@leftValue().right(5)&nbsp;&nbsp;&nbsp;@rightValue().left(5)&nbsp;&nbsp;@rightValue.right(1)</p>
+    <svg class="barcodeSVG @class" style="display:block; height:42px; width:@totalWidth()px; margin:0; @style();">
+      <ec:var previousWidth/>    
+      <ec:loop count=@completeCode.length>
+      <ec:set previousWidth = @calc(@previousWidth.alt(0) - @completeCode.right(@calc(@index - 1)).left(1)).asinteger.alt(0) if=@index.isgreaterthan(1)/>
+      <ec:set previousWidth = @totalWidth if=@index.is(1)/>
+      
+      <rect width="@previousWidth.asinteger.alt(0)" height="@codeHeight" style="@if(@index.isodd|fill:rgb(0,0,0);)@if(@index.iseven|fill:rgb(255,255,255); height:42px;)@if(@any(@index.islessthan(4)|@index.isgreaterthan(55)|@index.isbetween(28|32))| height:42px;)"/>
+      </ec:loop>
+      Please upgrade to a browser that supports svg images in order to view this barcode.
+    </svg>
+  </ec:case>
+</ec:function>
