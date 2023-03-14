@@ -6,3 +6,4 @@ Server side barcode renderer using ECPages, SQL, and JS
 3. execute server_barcode function and return its output as the server response
 
 another function can be created. this would create an image element that has "/barcode?value=..." as the src. The server would then generate and return the barcode
+each file with pr_ is a T-SQL stored procedure. each file with \_data represents a table in the database (.csv's are data rows and .txt's are table designs).
